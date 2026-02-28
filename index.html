@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dチーム・デイリー品質</title>
+    <style>
+        body { font-family: sans-serif; background: #f4f7f6; padding: 10px; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #232f3e; font-size: 1.2em; border-bottom: 2px solid #ff9900; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; font-size: 0.9em; }
+        th { background: #232f3e; color: white; }
+        input[type="number"] { width: 45px; padding: 5px; text-align: center; border: 1px solid #ccc; }
+        .rank-S { color: #155724; font-weight: bold; } /* 正常・優秀 */
+        .rank-F { color: #721c24; font-weight: bold; background: #f8d7da; } /* 要注意 */
+        .btn-copy { display: block; width: 100%; margin-top: 15px; padding: 10px; background: #ff9900; color: white; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="capture-area">
+    <h1>Dチーム 品質報告 (本日分)</h1>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>氏名</th>
+                <th>未配</th>
+                <th>誤配</th>
+                <th>Mentor</th>
+                <th>判定</th>
+            </tr>
+        </thead>
+        <tbody id="member-list"></tbody>
+    </table>
+</div>
+
+<button class="btn-copy" onclick="window.print()">スクショ用画面（印刷）</button>
+
+<script>
+// メンバーリスト [cite: 32]
+const members = ["西村 拓馬", "高橋 秀彪", "梅村 安広", "金子 亨", "新里 裕", "山口 香月"];
+
+function init() {
+    const tbody = document.getElementById('member-list');
+    members.forEach((name, i) => {
+        const tr = document.createElement('tr');
+        // 全員「未配0・誤配0・Mentor 850」のクリーンな状態からスタート [cite: 31]
+        tr.innerHTML = `
+            <td style="text-align:left;">${name}</td>
+            <td><input type="number" value="0" id="mihai-${i}" oninput="update()"></td>
+            <td><input type="number" value="0" id="gohai-${i}" oninput="update()"></td>
+            <td><input type="number" value="850" id="mentor-${i}" oninput="update()" style="width:50px;"></td>
+            <td id="rank-${i}">Good</td>
+        `;
+        tbody.appendChild(tr);
+    });
+    update();
+}
+
+function update() {
+    members.forEach((name, i) => {
+        const mihai = parseInt(document.getElementById(`mihai-${i}`).value) || 0;
+        const gohai = parseInt(document.getElementById(`gohai-${i}`).value) || 0;
+        const mentor = parseInt(document.getElementById(`mentor-${i}`).value) || 0;
+
+        const rankCell = document.getElementById(`rank-${i}`);
+        
+        // 判定ロジック：誤配または未配がある、もしくはMentorが低い場合に警告 [cite: 11, 23, 31]
+        if (gohai > 0 || mihai > 0 || mentor < 800) {
+            rankCell.innerText = "要確認";
+            rankCell.className = "rank-F";
+        } else {
+            rankCell.innerText = "Good";
+            rankCell.className = "rank-S";
+        }
+    });
+}
+window.onload = init;
+</script>
+</body>
+</html>
