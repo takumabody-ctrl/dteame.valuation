@@ -3,29 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>D-Team Score</title>
+    <title>D-Team Quality Hub</title>
     <style>
-        :root { --bg: #1a1a1a; --card: #2d2d2d; --accent: #febd69; --text: #ffffff; --minus: #ff4d4d; --plus: #00ff88; }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; overflow: hidden; }
+        :root { --bg: #0f1111; --card: #232f3e; --accent: #febd69; --text: #ffffff; --minus: #ff4d4d; --plus: #00ff88; }
+        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 8px; overflow-x: hidden; }
         .container { width: 100%; max-width: 400px; margin: auto; }
-        h1 { text-align: center; font-size: 16px; margin: 0 0 10px 0; color: var(--accent); letter-spacing: 1px; }
-        table { width: 100%; border-collapse: separate; border-spacing: 0 4px; table-layout: fixed; }
-        th { font-size: 11px; color: #aaa; padding: 5px 0; font-weight: normal; }
-        td { background: var(--card); padding: 8px 2px; text-align: center; border: none; }
-        td:first-child { border-radius: 6px 0 0 6px; }
-        td:last-child { border-radius: 0 6px 6px 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; border-bottom: 1px solid #3a4553; padding-bottom: 5px; }
+        h1 { font-size: 14px; margin: 0; color: var(--accent); letter-spacing: 0.5px; }
+        input[type="date"] { background: #3a4553; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 2px 5px; font-size: 12px; }
+        
+        table { width: 100%; border-collapse: separate; border-spacing: 0 3px; table-layout: fixed; }
+        th { font-size: 10px; color: #888; padding-bottom: 5px; font-weight: normal; }
+        td { background: var(--card); padding: 10px 2px; text-align: center; }
+        td:first-child { border-radius: 4px 0 0 4px; }
+        td:last-child { border-radius: 0 4px 4px 0; }
         .name { font-size: 12px; font-weight: bold; text-align: left; padding-left: 8px; white-space: nowrap; }
-        input { width: 85%; background: #3d3d3d; color: #fff; border: 1px solid #555; border-radius: 4px; padding: 5px 0; text-align: center; font-size: 14px; -webkit-appearance: none; }
+        
+        input[type="number"] { width: 85%; background: #131a22; color: #fff; border: 1px solid #3a4553; border-radius: 3px; padding: 6px 0; text-align: center; font-size: 15px; -webkit-appearance: none; }
         .score { font-size: 16px; font-weight: bold; }
-        .score.neg { color: var(--minus); }
-        .score.pos { color: var(--plus); }
-        .footer { font-size: 9px; color: #777; margin-top: 8px; text-align: center; }
+        .neg { color: var(--minus); }
+        .pos { color: var(--plus); }
+
+        .btn-save { width: 100%; margin: 10px 0; padding: 10px; background: var(--accent); color: #000; border: none; border-radius: 4px; font-weight: bold; font-size: 14px; }
+        
+        .report-box { background: #131a22; padding: 10px; border-radius: 6px; border: 1px solid #3a4553; }
+        .report-title { font-size: 11px; color: var(--accent); margin-bottom: 8px; border-bottom: 1px solid #3a4553; }
+        .weekly-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 11px; }
+        .weekly-item { display: flex; justify-content: space-between; padding: 2px 5px; border-left: 2px solid #3a4553; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>D-TEAM QUALITY REPORT</h1>
+    <div class="header">
+        <h1>D-TEAM QUALITY HUB</h1>
+        <input type="date" id="date-pick" onchange="loadData()">
+    </div>
+
     <table>
         <thead>
             <tr>
@@ -33,48 +47,108 @@
                 <th style="width:17%">未配</th>
                 <th style="width:17%">誤配</th>
                 <th style="width:19%">Mentor</th>
-                <th style="width:24%">週合計</th>
+                <th style="width:24%">当日点</th>
             </tr>
         </thead>
         <tbody id="list"></tbody>
     </table>
-    <p class="footer">※未配/誤配:-50pt | Mentor:800基準</p>
+
+    <button class="btn-save" onclick="saveData()">データを保存</button>
+
+    <div class="report-box">
+        <div class="report-title">WEEKLY TOTAL (直近7日間)</div>
+        <div id="weekly-list" class="weekly-grid"></div>
+    </div>
 </div>
 
 <script>
 const members = ["西村拓馬", "高橋秀彪", "梅村安広", "金子亨", "新里裕", "山口香月"];
+let storage = JSON.parse(localStorage.getItem('dTeamScoreDB')) || {};
 
-function init() {
+// 初期化
+document.getElementById('date-pick').valueAsDate = new Date();
+
+function renderRows() {
     const tbody = document.getElementById('list');
+    tbody.innerHTML = '';
     members.forEach((name, i) => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="name">${name}</td>
-            <td><input type="number" value="0" id="m-${i}" oninput="calc()"></td>
-            <td><input type="number" value="0" id="g-${i}" oninput="calc()"></td>
-            <td><input type="number" value="850" id="f-${i}" oninput="calc()"></td>
+            <td><input type="number" value="0" id="m-${i}" oninput="refresh()"></td>
+            <td><input type="number" value="0" id="g-${i}" oninput="refresh()"></td>
+            <td><input type="number" value="750" id="f-${i}" oninput="refresh()"></td>
             <td id="t-${i}" class="score">0</td>
         `;
         tbody.appendChild(tr);
     });
-    calc();
+    loadData();
 }
 
-function calc() {
-    members.forEach((name, i) => {
+function refresh() {
+    members.forEach((_, i) => {
         const m = parseInt(document.getElementById(`m-${i}`).value) || 0;
         const g = parseInt(document.getElementById(`g-${i}`).value) || 0;
         const f = parseInt(document.getElementById(`f-${i}`).value) || 0;
 
-        //
+        // 計算ルール：未配・誤配 各-50 / Mentor 800基準で1点単位
         const score = (m * -50) + (g * -50) + (f - 800);
         
         const el = document.getElementById(`t-${i}`);
         el.innerText = (score > 0 ? "+" : "") + score;
-        el.className = score >= 0 ? "score pos" : "score neg";
+        el.className = "score " + (score >= 0 ? "pos" : "neg");
+    });
+    updateWeekly();
+}
+
+function saveData() {
+    const date = document.getElementById('date-pick').value;
+    const dayData = members.map((_, i) => ({
+        m: document.getElementById(`m-${i}`).value,
+        g: document.getElementById(`g-${i}`).value,
+        f: document.getElementById(`f-${i}`).value
+    }));
+    storage[date] = dayData;
+    localStorage.setItem('dTeamScoreDB', JSON.stringify(storage));
+    alert("保存完了: " + date);
+    updateWeekly();
+}
+
+function loadData() {
+    const date = document.getElementById('date-pick').value;
+    const data = storage[date];
+    members.forEach((_, i) => {
+        document.getElementById(`m-${i}`).value = data ? data[i].m : 0;
+        document.getElementById(`g-${i}`).value = data ? data[i].g : 0;
+        document.getElementById(`f-${i}`).value = data ? data[i].f : 750; // 全員750点スタート
+    });
+    refresh();
+}
+
+function updateWeekly() {
+    const grid = document.getElementById('weekly-list');
+    grid.innerHTML = '';
+    
+    members.forEach((name, i) => {
+        let total = 0;
+        // 直近7日を集計
+        for (let j = 0; j < 7; j++) {
+            let d = new Date();
+            d.setDate(d.getDate() - j);
+            let dStr = d.toISOString().split('T')[0];
+            if (storage[dStr]) {
+                const day = storage[dStr][i];
+                total += (day.m * -50) + (day.g * -50) + (day.f - 800);
+            }
+        }
+        const div = document.createElement('div');
+        div.className = 'weekly-item';
+        div.innerHTML = `<span>${name}</span><span class="${total >= 0 ? 'pos' : 'neg'}">${total > 0 ? '+' : ''}${total}</span>`;
+        grid.appendChild(div);
     });
 }
-window.onload = init;
+
+window.onload = renderRows;
 </script>
 </body>
 </html>
