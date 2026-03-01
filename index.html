@@ -66,7 +66,7 @@
 </table>
 
 <div class="btns">
-    <button class="btn-save" onclick="saveData()">データを保存</button>
+    <button class="btn-save" onclick="saveData()">データを保存(並び替え)</button>
     <button class="btn-csv" onclick="exportCSV()">CSV出力</button>
 </div>
 
@@ -76,27 +76,23 @@ const members = [
     {id:2, name: "梅村安広"}, {id:3, name: "金子亨"}, 
     {id:4, name: "新里裕"}, {id:5, name: "山口香月"}
 ];
-let db = JSON.parse(localStorage.getItem('dTeamEliteDB_vScoreAdjust')) || {};
+let db = JSON.parse(localStorage.getItem('dTeamEliteDB_vFinal_AutoSort')) || {};
 
 document.getElementById('date-pick').valueAsDate = new Date();
 
-// --- 修正後の配点ロジック ---
 function calcScore(m, g, f) {
+    // 稼働していない（Mentor 0）の場合は一律0点
+    if (f === 0) return 0;
+
     let mPoint = 0;
-    
     if (f >= 750) {
-        // 750点以上： 850点で100点になるよう計算 (0.5点/1点加算)
-        // 750時点で50点、そこから100点分(100点満点)まで加点
         mPoint = 50 + (f - 750) * 0.5; 
     } else if (f >= 650) {
-        // 650～750点： 650時点で0点、750時点で50点になるよう加点 (0.5点/1点加算)
         mPoint = (f - 650) * 0.5;
     } else {
-        // 650点以下： 0点
         mPoint = 0;
     }
 
-    // 減点：誤配 -50, 未配 -20
     let penalty = (g * 50) + (m * 20);
     let total = mPoint - penalty;
     
@@ -138,7 +134,8 @@ function loadDay() {
     members.forEach(m => {
         document.getElementById(`in-m-${m.id}`).value = data ? data[m.id].m : 0;
         document.getElementById(`in-g-${m.id}`).value = data ? data[m.id].g : 0;
-        document.getElementById(`in-f-${m.id}`).value = data ? data[m.id].f : 750;
+        // デフォルト0設定
+        document.getElementById(`in-f-${m.id}`).value = data ? data[m.id].f : 0;
         updateRowScore(m.id);
     });
     reorder(); 
@@ -165,9 +162,11 @@ function saveData() {
         dayData[m.id] = { m: mv, g: gv, f: fv };
     });
     db[date] = dayData;
-    localStorage.setItem('dTeamEliteDB_vScoreAdjust', JSON.stringify(db));
-    alert("データを保存しました。");
-    reorder(); 
+    localStorage.setItem('dTeamEliteDB_vFinal_AutoSort', JSON.stringify(db));
+    
+    // 保存と同時に並べ替えを実行
+    reorder();
+    alert("保存と同時にランキングを更新しました。");
 }
 
 function showHistory(id) {
@@ -179,7 +178,7 @@ function showHistory(id) {
     sortedDates.forEach(date => {
         const d = db[date][id];
         if(d) {
-            const s = calcScore(d.m, d.g, d.f);
+            const s = calcScore(parseInt(d.m), parseInt(d.g), parseInt(d.f));
             html += `<tr><td>${date.slice(5)}</td><td>${d.m}</td><td>${d.g}</td><td>${d.f}</td><td>${s}</td></tr>`;
         }
     });
@@ -194,7 +193,7 @@ function exportCSV() {
     Object.keys(db).sort().forEach(date => {
         members.forEach(m => {
             const d = db[date][m.id];
-            if(d) csv += `${date},${m.name},${d.m},${d.g},${d.f},${calcScore(d.m, d.g, d.f)}\n`;
+            if(d) csv += `${date},${m.name},${d.m},${d.g},${d.f},${calcScore(parseInt(d.m), parseInt(d.g), parseInt(d.f))}\n`;
         });
     });
     const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
