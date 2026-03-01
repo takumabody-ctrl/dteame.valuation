@@ -13,9 +13,9 @@
         
         table { width: 100%; border-collapse: separate; border-spacing: 0 5px; table-layout: fixed; }
         th { font-size: 10px; color: #888; font-weight: normal; text-align: center; }
-        td { background: var(--card); padding: 12px 2px; text-align: center; border: none; }
-        td:first-child { border-radius: 6px 0 0 6px; }
-        td:last-child { border-radius: 0 6px 6px 0; }
+        .row-item td { background: var(--card); padding: 12px 2px; text-align: center; border: none; }
+        .row-item td:first-child { border-radius: 6px 0 0 6px; }
+        .row-item td:last-child { border-radius: 0 6px 6px 0; }
         
         .name { font-size: 13px; font-weight: bold; text-align: left; padding-left: 10px; color: var(--accent); text-decoration: underline; white-space: nowrap; overflow: hidden; }
         input[type="number"] { width: 85%; background: #131a22; color: #fff; border: 1px solid #3a4553; border-radius: 4px; padding: 8px 0; text-align: center; font-size: 16px; -webkit-appearance: none; }
@@ -62,7 +62,8 @@
             <th style="width:24%">当日点</th>
         </tr>
     </thead>
-    <tbody id="list"></tbody>
+    <tbody id="list">
+        </tbody>
 </table>
 
 <div class="btns">
@@ -71,98 +72,92 @@
 </div>
 
 <script>
-let members = [
+const members = [
     {id:0, name: "西村拓馬"}, {id:1, name: "高橋秀彪"}, 
     {id:2, name: "梅村安広"}, {id:3, name: "金子亨"}, 
     {id:4, name: "新里裕"}, {id:5, name: "山口香月"}
 ];
-let db = JSON.parse(localStorage.getItem('dTeamEliteDB_v3')) || {};
-let isEditing = false; // 入力中フラグ
+let db = JSON.parse(localStorage.getItem('dTeamEliteDB_vFinal')) || {};
 
 document.getElementById('date-pick').valueAsDate = new Date();
 
 function calcScore(m, g, f) {
     let mPoint = 0;
-    if (f >= 800) {
-        mPoint = 75 + (f - 800); 
-    } else if (f >= 750) {
-        mPoint = (f - 750) * 1.5; 
-    }
+    if (f >= 800) mPoint = 75 + (f - 800); 
+    else if (f >= 750) mPoint = (f - 750) * 1.5; 
     let penalty = (g * 50) + (m * 20);
-    let total = mPoint - penalty;
-    return Math.max(0, Math.min(100, Math.round(total * 10) / 10));
+    return Math.max(0, Math.min(100, Math.round((mPoint - penalty) * 10) / 10));
 }
 
-// 画面描画（並べ替えあり）
-function render(sort = true) {
-    if (isEditing) return; // 入力中は描画更新をブロック
-
+// 初回のみHTMLを生成
+function initTable() {
     const tbody = document.getElementById('list');
-    let currentData = [];
-
-    members.forEach(member => {
-        const date = document.getElementById('date-pick').value;
-        // メモリ内の一時データがあれば優先、なければDB、なければ初期値
-        const saved = (db[date] && db[date][member.id]) ? db[date][member.id] : {m:0, g:0, f:750};
-        const m = saved.m;
-        const g = saved.g;
-        const f = saved.f;
-        const score = calcScore(m, g, f);
-        currentData.push({ ...member, m, g, f, score });
-    });
-
-    if (sort) {
-        currentData.sort((a, b) => b.score - a.score);
-    }
-
     tbody.innerHTML = '';
-    currentData.forEach(d => {
-        let colorClass = d.score >= 80 ? 'rank-high' : (d.score >= 60 ? 'rank-mid' : (d.score <= 40 ? 'rank-low' : ''));
+    members.forEach(m => {
         const tr = document.createElement('tr');
+        tr.className = 'row-item';
+        tr.id = `row-${m.id}`;
         tr.innerHTML = `
-            <td class="name" onclick="showHistory(${d.id})">${d.name}</td>
-            <td><input type="number" value="${d.m}" onfocus="isEditing=true" onblur="updateVal(${d.id}, 'm', this.value)" oninput="fastUpdate(${d.id}, this)"></td>
-            <td><input type="number" value="${d.g}" onfocus="isEditing=true" onblur="updateVal(${d.id}, 'g', this.value)" oninput="fastUpdate(${d.id}, this)"></td>
-            <td><input type="number" value="${d.f}" onfocus="isEditing=true" onblur="updateVal(${d.id}, 'f', this.value)" oninput="fastUpdate(${d.id}, this)"></td>
-            <td id="score-${d.id}" class="sc ${colorClass}">${d.score}</td>
+            <td class="name" onclick="showHistory(${m.id})">${m.name}</td>
+            <td><input type="number" id="in-m-${m.id}" oninput="updateRowScore(${m.id})"></td>
+            <td><input type="number" id="in-g-${m.id}" oninput="updateRowScore(${m.id})"></td>
+            <td><input type="number" id="in-f-${m.id}" oninput="updateRowScore(${m.id})"></td>
+            <td id="sc-${m.id}" class="sc">0</td>
         `;
         tbody.appendChild(tr);
     });
+    loadDay();
 }
 
-// 入力中の数値計算のみを即時反映（並べ替えはしない）
-function fastUpdate(id, el) {
-    const row = el.closest('tr');
-    const m = row.querySelectorAll('input')[0].value;
-    const g = row.querySelectorAll('input')[1].value;
-    const f = row.querySelectorAll('input')[2].value;
+// 入力中にスコアと色だけを変える（並べ替えはしないのでキーボードが閉じない）
+function updateRowScore(id) {
+    const m = parseInt(document.getElementById(`in-m-${id}`).value) || 0;
+    const g = parseInt(document.getElementById(`in-g-${id}`).value) || 0;
+    const f = parseInt(document.getElementById(`in-f-${id}`).value) || 0;
     const score = calcScore(m, g, f);
-    const scoreEl = document.getElementById(`score-${id}`);
-    scoreEl.innerText = score;
-    scoreEl.className = `sc ${score >= 80 ? 'rank-high' : (score >= 60 ? 'rank-mid' : (score <= 40 ? 'rank-low' : ''))}`;
+    const el = document.getElementById(`sc-${id}`);
+    el.innerText = score;
+    el.className = `sc ${score >= 80 ? 'rank-high' : (score >= 60 ? 'rank-mid' : (score <= 40 ? 'rank-low' : ''))}`;
 }
 
-// フォーカスが外れた時にデータを一時保持
-function updateVal(id, type, val) {
-    isEditing = false;
+// データの読み込み
+function loadDay() {
     const date = document.getElementById('date-pick').value;
-    if (!db[date]) db[date] = {};
-    if (!db[date][id]) db[date][id] = {m:0, g:0, f:750};
-    db[date][id][type] = val;
-    // 数秒後に並べ替えを実行（連続入力の邪魔をしないため）
-    clearTimeout(window.sortTimer);
-    window.sortTimer = setTimeout(() => { render(true); }, 1500);
+    const data = db[date];
+    members.forEach(m => {
+        document.getElementById(`in-m-${m.id}`).value = data ? data[m.id].m : 0;
+        document.getElementById(`in-g-${m.id}`).value = data ? data[m.id].g : 0;
+        document.getElementById(`in-f-${m.id}`).value = data ? data[m.id].f : 750;
+        updateRowScore(m.id);
+    });
+    reorder(); // 読み込み時のみ並べ替える
+}
+
+// 物理的な並べ替え（保存時や日付変更時のみ実行）
+function reorder() {
+    const tbody = document.getElementById('list');
+    const rows = Array.from(tbody.querySelectorAll('.row-item'));
+    rows.sort((a, b) => {
+        const scA = parseFloat(a.querySelector('.sc').innerText);
+        const scB = parseFloat(b.querySelector('.sc').innerText);
+        return scB - scA;
+    });
+    rows.forEach(row => tbody.appendChild(row));
 }
 
 function saveData() {
-    localStorage.setItem('dTeamEliteDB_v3', JSON.stringify(db));
-    alert("全データを保存しました。");
-    render(true);
-}
-
-function loadDay() {
-    isEditing = false;
-    render(true);
+    const date = document.getElementById('date-pick').value;
+    let dayData = {};
+    members.forEach(m => {
+        const mv = document.getElementById(`in-m-${m.id}`).value;
+        const gv = document.getElementById(`in-g-${m.id}`).value;
+        const fv = document.getElementById(`in-f-${m.id}`).value;
+        dayData[m.id] = { m: mv, g: gv, f: fv };
+    });
+    db[date] = dayData;
+    localStorage.setItem('dTeamEliteDB_vFinal', JSON.stringify(db));
+    alert("保存しました。ランキングを更新します。");
+    reorder(); // 保存して初めて並べ替える
 }
 
 function showHistory(id) {
@@ -173,7 +168,10 @@ function showHistory(id) {
     if (sortedDates.length === 0) html += '<tr><td colspan="5">データなし</td></tr>';
     sortedDates.forEach(date => {
         const d = db[date][id];
-        if(d) html += `<tr><td>${date.slice(5)}</td><td>${d.m}</td><td>${d.g}</td><td>${d.f}</td><td>${d.s || calcScore(d.m, d.g, d.f)}</td></tr>`;
+        if(d) {
+            const s = calcScore(d.m, d.g, d.f);
+            html += `<tr><td>${date.slice(5)}</td><td>${d.m}</td><td>${d.g}</td><td>${d.f}</td><td>${s}</td></tr>`;
+        }
     });
     document.getElementById('m-history').innerHTML = html + '</table>';
     document.getElementById('modal').style.display = 'flex';
@@ -196,7 +194,7 @@ function exportCSV() {
     link.click();
 }
 
-window.onload = () => { render(true); };
+window.onload = initTable;
 </script>
 </body>
 </html>
