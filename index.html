@@ -62,8 +62,7 @@
             <th style="width:24%">当日点</th>
         </tr>
     </thead>
-    <tbody id="list">
-        </tbody>
+    <tbody id="list"></tbody>
 </table>
 
 <div class="btns">
@@ -77,19 +76,33 @@ const members = [
     {id:2, name: "梅村安広"}, {id:3, name: "金子亨"}, 
     {id:4, name: "新里裕"}, {id:5, name: "山口香月"}
 ];
-let db = JSON.parse(localStorage.getItem('dTeamEliteDB_vFinal')) || {};
+let db = JSON.parse(localStorage.getItem('dTeamEliteDB_vScoreAdjust')) || {};
 
 document.getElementById('date-pick').valueAsDate = new Date();
 
+// --- 修正後の配点ロジック ---
 function calcScore(m, g, f) {
     let mPoint = 0;
-    if (f >= 800) mPoint = 75 + (f - 800); 
-    else if (f >= 750) mPoint = (f - 750) * 1.5; 
+    
+    if (f >= 750) {
+        // 750点以上： 850点で100点になるよう計算 (0.5点/1点加算)
+        // 750時点で50点、そこから100点分(100点満点)まで加点
+        mPoint = 50 + (f - 750) * 0.5; 
+    } else if (f >= 650) {
+        // 650～750点： 650時点で0点、750時点で50点になるよう加点 (0.5点/1点加算)
+        mPoint = (f - 650) * 0.5;
+    } else {
+        // 650点以下： 0点
+        mPoint = 0;
+    }
+
+    // 減点：誤配 -50, 未配 -20
     let penalty = (g * 50) + (m * 20);
-    return Math.max(0, Math.min(100, Math.round((mPoint - penalty) * 10) / 10));
+    let total = mPoint - penalty;
+    
+    return Math.max(0, Math.min(100, Math.round(total * 10) / 10));
 }
 
-// 初回のみHTMLを生成
 function initTable() {
     const tbody = document.getElementById('list');
     tbody.innerHTML = '';
@@ -109,7 +122,6 @@ function initTable() {
     loadDay();
 }
 
-// 入力中にスコアと色だけを変える（並べ替えはしないのでキーボードが閉じない）
 function updateRowScore(id) {
     const m = parseInt(document.getElementById(`in-m-${id}`).value) || 0;
     const g = parseInt(document.getElementById(`in-g-${id}`).value) || 0;
@@ -120,7 +132,6 @@ function updateRowScore(id) {
     el.className = `sc ${score >= 80 ? 'rank-high' : (score >= 60 ? 'rank-mid' : (score <= 40 ? 'rank-low' : ''))}`;
 }
 
-// データの読み込み
 function loadDay() {
     const date = document.getElementById('date-pick').value;
     const data = db[date];
@@ -130,10 +141,9 @@ function loadDay() {
         document.getElementById(`in-f-${m.id}`).value = data ? data[m.id].f : 750;
         updateRowScore(m.id);
     });
-    reorder(); // 読み込み時のみ並べ替える
+    reorder(); 
 }
 
-// 物理的な並べ替え（保存時や日付変更時のみ実行）
 function reorder() {
     const tbody = document.getElementById('list');
     const rows = Array.from(tbody.querySelectorAll('.row-item'));
@@ -155,9 +165,9 @@ function saveData() {
         dayData[m.id] = { m: mv, g: gv, f: fv };
     });
     db[date] = dayData;
-    localStorage.setItem('dTeamEliteDB_vFinal', JSON.stringify(db));
-    alert("保存しました。ランキングを更新します。");
-    reorder(); // 保存して初めて並べ替える
+    localStorage.setItem('dTeamEliteDB_vScoreAdjust', JSON.stringify(db));
+    alert("データを保存しました。");
+    reorder(); 
 }
 
 function showHistory(id) {
