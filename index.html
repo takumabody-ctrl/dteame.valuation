@@ -26,12 +26,10 @@
         .rank-low { color: var(--r); }
 
         .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
-        button { padding: 12px; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.2s; }
-        button:active { opacity: 0.7; }
+        button { padding: 12px; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; }
         .btn-save { background: var(--accent); color: #000; }
         .btn-csv { background: #3a4553; color: #fff; }
 
-        /* 履歴モーダル */
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; }
         .modal-cont { background: #1a1a1a; width: 90%; max-height: 80%; border-radius: 12px; padding: 20px; border: 1px solid var(--accent); box-sizing: border-box; overflow-y: auto; }
         .modal-close { display: block; text-align: right; color: var(--accent); font-weight: bold; margin-bottom: 15px; }
@@ -41,9 +39,9 @@
 </head>
 <body>
 
-<div id="modal" onclick="closeModal(event)">
+<div id="modal" onclick="closeModal()">
     <div class="modal-cont" onclick="event.stopPropagation()">
-        <span class="modal-close" onclick="closeModal(event)">✕ 閉じる</span>
+        <span class="modal-close" onclick="closeModal()">✕ 閉じる</span>
         <h3 id="m-name" style="color:var(--accent); margin-top:0;"></h3>
         <div id="m-history"></div>
     </div>
@@ -78,78 +76,93 @@ let members = [
     {id:2, name: "梅村安広"}, {id:3, name: "金子亨"}, 
     {id:4, name: "新里裕"}, {id:5, name: "山口香月"}
 ];
-let db = JSON.parse(localStorage.getItem('dTeamEliteDB_v2')) || {};
+let db = JSON.parse(localStorage.getItem('dTeamEliteDB_v3')) || {};
+let isEditing = false; // 入力中フラグ
 
 document.getElementById('date-pick').valueAsDate = new Date();
 
 function calcScore(m, g, f) {
     let mPoint = 0;
-    // メンター配点ロジック
     if (f >= 800) {
-        mPoint = 75 + (f - 800); // 800点で75点、そこから1点ずつ加点
+        mPoint = 75 + (f - 800); 
     } else if (f >= 750) {
-        mPoint = (f - 750) * 1.5; // 750(0点)〜800(75点)を傾斜配点
+        mPoint = (f - 750) * 1.5; 
     }
-    // 減点ロジック
     let penalty = (g * 50) + (m * 20);
     let total = mPoint - penalty;
-    // 0〜100点に制限
     return Math.max(0, Math.min(100, Math.round(total * 10) / 10));
 }
 
-function refresh() {
+// 画面描画（並べ替えあり）
+function render(sort = true) {
+    if (isEditing) return; // 入力中は描画更新をブロック
+
+    const tbody = document.getElementById('list');
     let currentData = [];
+
     members.forEach(member => {
-        const m = parseInt(document.getElementById(`m-${member.id}`)?.value) || 0;
-        const g = parseInt(document.getElementById(`g-${member.id}`)?.value) || 0;
-        const f = parseInt(document.getElementById(`f-${member.id}`)?.value) || 750;
+        const date = document.getElementById('date-pick').value;
+        // メモリ内の一時データがあれば優先、なければDB、なければ初期値
+        const saved = (db[date] && db[date][member.id]) ? db[date][member.id] : {m:0, g:0, f:750};
+        const m = saved.m;
+        const g = saved.g;
+        const f = saved.f;
         const score = calcScore(m, g, f);
         currentData.push({ ...member, m, g, f, score });
     });
 
-    // 高得点順に並べ替え
-    currentData.sort((a, b) => b.score - a.score);
+    if (sort) {
+        currentData.sort((a, b) => b.score - a.score);
+    }
 
-    const tbody = document.getElementById('list');
     tbody.innerHTML = '';
     currentData.forEach(d => {
         let colorClass = d.score >= 80 ? 'rank-high' : (d.score >= 60 ? 'rank-mid' : (d.score <= 40 ? 'rank-low' : ''));
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td class="name" onclick="showHistory(${d.id})">${d.name}</td>
-            <td><input type="number" value="${d.m}" id="m-${d.id}" oninput="refresh()"></td>
-            <td><input type="number" value="${d.g}" id="g-${d.id}" oninput="refresh()"></td>
-            <td><input type="number" value="${d.f}" id="f-${d.id}" oninput="refresh()"></td>
-            <td class="sc ${colorClass}">${d.score}</td>
+            <td><input type="number" value="${d.m}" onfocus="isEditing=true" onblur="updateVal(${d.id}, 'm', this.value)" oninput="fastUpdate(${d.id}, this)"></td>
+            <td><input type="number" value="${d.g}" onfocus="isEditing=true" onblur="updateVal(${d.id}, 'g', this.value)" oninput="fastUpdate(${d.id}, this)"></td>
+            <td><input type="number" value="${d.f}" onfocus="isEditing=true" onblur="updateVal(${d.id}, 'f', this.value)" oninput="fastUpdate(${d.id}, this)"></td>
+            <td id="score-${d.id}" class="sc ${colorClass}">${d.score}</td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-function saveData() {
+// 入力中の数値計算のみを即時反映（並べ替えはしない）
+function fastUpdate(id, el) {
+    const row = el.closest('tr');
+    const m = row.querySelectorAll('input')[0].value;
+    const g = row.querySelectorAll('input')[1].value;
+    const f = row.querySelectorAll('input')[2].value;
+    const score = calcScore(m, g, f);
+    const scoreEl = document.getElementById(`score-${id}`);
+    scoreEl.innerText = score;
+    scoreEl.className = `sc ${score >= 80 ? 'rank-high' : (score >= 60 ? 'rank-mid' : (score <= 40 ? 'rank-low' : ''))}`;
+}
+
+// フォーカスが外れた時にデータを一時保持
+function updateVal(id, type, val) {
+    isEditing = false;
     const date = document.getElementById('date-pick').value;
-    let dayData = {};
-    members.forEach(m => {
-        const mv = document.getElementById(`m-${m.id}`).value;
-        const gv = document.getElementById(`g-${m.id}`).value;
-        const fv = document.getElementById(`f-${m.id}`).value;
-        dayData[m.id] = { m: mv, g: gv, f: fv, s: calcScore(mv, gv, fv) };
-    });
-    db[date] = dayData;
-    localStorage.setItem('dTeamEliteDB_v2', JSON.stringify(db));
-    alert(date + " のデータを保存しました。");
-    refresh();
+    if (!db[date]) db[date] = {};
+    if (!db[date][id]) db[date][id] = {m:0, g:0, f:750};
+    db[date][id][type] = val;
+    // 数秒後に並べ替えを実行（連続入力の邪魔をしないため）
+    clearTimeout(window.sortTimer);
+    window.sortTimer = setTimeout(() => { render(true); }, 1500);
+}
+
+function saveData() {
+    localStorage.setItem('dTeamEliteDB_v3', JSON.stringify(db));
+    alert("全データを保存しました。");
+    render(true);
 }
 
 function loadDay() {
-    const date = document.getElementById('date-pick').value;
-    const data = db[date];
-    members.forEach(m => {
-        document.getElementById(`m-${m.id}`).value = data ? data[m.id].m : 0;
-        document.getElementById(`g-${m.id}`).value = data ? data[m.id].g : 0;
-        document.getElementById(`f-${m.id}`).value = data ? data[m.id].f : 750;
-    });
-    refresh();
+    isEditing = false;
+    render(true);
 }
 
 function showHistory(id) {
@@ -160,20 +173,20 @@ function showHistory(id) {
     if (sortedDates.length === 0) html += '<tr><td colspan="5">データなし</td></tr>';
     sortedDates.forEach(date => {
         const d = db[date][id];
-        if(d) html += `<tr><td>${date.slice(5)}</td><td>${d.m}</td><td>${d.g}</td><td>${d.f}</td><td>${d.s}</td></tr>`;
+        if(d) html += `<tr><td>${date.slice(5)}</td><td>${d.m}</td><td>${d.g}</td><td>${d.f}</td><td>${d.s || calcScore(d.m, d.g, d.f)}</td></tr>`;
     });
     document.getElementById('m-history').innerHTML = html + '</table>';
     document.getElementById('modal').style.display = 'flex';
 }
 
-function closeModal(e) { document.getElementById('modal').style.display = 'none'; }
+function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
 function exportCSV() {
     let csv = "日付,氏名,未配,誤配,Mentor,当日点\n";
     Object.keys(db).sort().forEach(date => {
         members.forEach(m => {
             const d = db[date][m.id];
-            csv += `${date},${m.name},${d.m},${d.g},${d.f},${d.s}\n`;
+            if(d) csv += `${date},${m.name},${d.m},${d.g},${d.f},${calcScore(d.m, d.g, d.f)}\n`;
         });
     });
     const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
@@ -183,7 +196,7 @@ function exportCSV() {
     link.click();
 }
 
-window.onload = refresh;
+window.onload = () => { render(true); };
 </script>
 </body>
 </html>
