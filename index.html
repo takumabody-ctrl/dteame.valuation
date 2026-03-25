@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>D-Team Elite Hub</title>
+    <!-- Excel出力用のライブラリ (SheetJS) を追加 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         :root { --bg: #0f1111; --card: #232f3e; --accent: #febd69; --text: #ffffff; --r: #ff4d4d; --y: #f1c40f; --g: #00ff88; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 10px; }
@@ -28,7 +30,7 @@
         .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 15px 0; }
         button { padding: 12px; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; }
         .btn-save { background: var(--accent); color: #000; }
-        .btn-csv { background: #3a4553; color: #fff; }
+        .btn-excel { background: #007233; color: #fff; } /* Excelボタンの色 */
 
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; }
         .modal-cont { background: #1a1a1a; width: 90%; max-height: 80%; border-radius: 12px; padding: 20px; border: 1px solid var(--accent); box-sizing: border-box; overflow-y: auto; }
@@ -67,7 +69,8 @@
 
 <div class="btns">
     <button class="btn-save" onclick="saveData()">データを保存(並び替え)</button>
-    <button class="btn-csv" onclick="exportCSV()">CSV出力</button>
+    <!-- CSVボタンをスプレッドシート(Excel)出力に変更 -->
+    <button class="btn-excel" onclick="exportExcel()">スプレッドシート出力</button>
 </div>
 
 <script>
@@ -81,7 +84,6 @@ let db = JSON.parse(localStorage.getItem('dTeamEliteDB_vFinal_AutoSort')) || {};
 document.getElementById('date-pick').valueAsDate = new Date();
 
 function calcScore(m, g, f) {
-    // 稼働していない（Mentor 0）の場合は一律0点
     if (f === 0) return 0;
 
     let mPoint = 0;
@@ -93,7 +95,8 @@ function calcScore(m, g, f) {
         mPoint = 0;
     }
 
-    let penalty = (g * 50) + (m * 20);
+    // ★ 修正点: 未配(m)のペナルティを 20点 → 50点に変更
+    let penalty = (g * 50) + (m * 50);
     let total = mPoint - penalty;
     
     return Math.max(0, Math.min(100, Math.round(total * 10) / 10));
@@ -134,7 +137,6 @@ function loadDay() {
     members.forEach(m => {
         document.getElementById(`in-m-${m.id}`).value = data ? data[m.id].m : 0;
         document.getElementById(`in-g-${m.id}`).value = data ? data[m.id].g : 0;
-        // デフォルト0設定
         document.getElementById(`in-f-${m.id}`).value = data ? data[m.id].f : 0;
         updateRowScore(m.id);
     });
@@ -164,7 +166,6 @@ function saveData() {
     db[date] = dayData;
     localStorage.setItem('dTeamEliteDB_vFinal_AutoSort', JSON.stringify(db));
     
-    // 保存と同時に並べ替えを実行
     reorder();
     alert("保存と同時にランキングを更新しました。");
 }
@@ -188,19 +189,29 @@ function showHistory(id) {
 
 function closeModal() { document.getElementById('modal').style.display = 'none'; }
 
-function exportCSV() {
-    let csv = "日付,氏名,未配,誤配,Mentor,当日点\n";
+// ★ 修正点: CSVではなくGoogleスプレッドシート(Excel形式.xlsx)で出力
+function exportExcel() {
+    // 1行目のヘッダー
+    let rawData = [["日付", "氏名", "未配", "誤配", "Mentor", "当日点"]];
+    
+    // データ入力
     Object.keys(db).sort().forEach(date => {
         members.forEach(m => {
             const d = db[date][m.id];
-            if(d) csv += `${date},${m.name},${d.m},${d.g},${d.f},${calcScore(parseInt(d.m), parseInt(d.g), parseInt(d.f))}\n`;
+            if(d) {
+                const s = calcScore(parseInt(d.m), parseInt(d.g), parseInt(d.f));
+                rawData.push([date, m.name, parseInt(d.m), parseInt(d.g), parseInt(d.f), s]);
+            }
         });
     });
-    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = `D-Team-Report.csv`;
-    link.click();
+
+    // SheetJSを使ってExcel用ワークブックを作成
+    const worksheet = XLSX.utils.aoa_to_sheet(rawData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "採点結果(Report)");
+    
+    // Googleスプレッドシートに完璧にインポートできる .xlsx ファイルを出力
+    XLSX.writeFile(workbook, "D-Team-Report.xlsx");
 }
 
 window.onload = initTable;
